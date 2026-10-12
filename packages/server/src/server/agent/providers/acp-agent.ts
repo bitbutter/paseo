@@ -1863,7 +1863,22 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         );
         this.applySessionState(response);
       } else {
-        throw new Error(`${this.provider} does not support ACP session resume`);
+        // Some ACP agents persist history but do not implement session/load or
+        // unstable/resumeSession. The daemon already owns the durable timeline,
+        // so start a new provider session rather than making the old timeline
+        // unreadable after a restart.
+        const response = await this.runACPRequest(() =>
+          this.connection!.newSession({
+            cwd: this.config.cwd,
+            mcpServers: this.acpMcpServers(),
+          }),
+        );
+        this.sessionId = response.sessionId;
+        this.bootstrapThreadEventPending = true;
+        this.applySessionState(response);
+        for (const update of this.earlySessionUpdates.splice(0)) {
+          await this.sessionUpdate(update);
+        }
       }
 
       await this.applyConfiguredOverrides();

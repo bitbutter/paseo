@@ -4243,6 +4243,58 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
     });
   });
 
+  test("starts a new session when the ACP agent cannot resume", async () => {
+    const newSession = vi.fn().mockResolvedValue({
+      sessionId: "fresh-session",
+      modes: null,
+      models: null,
+      configOptions: [],
+    });
+    const unstableResumeSession = vi.fn();
+    const loadSession = vi.fn();
+    class NonResumableSession extends ACPAgentSession {
+      protected override async spawnProcess(): Promise<SpawnedACPProcess> {
+        return {
+          child: createProbeChildStub(),
+          connection: {
+            newSession,
+            loadSession,
+            unstable_resumeSession: unstableResumeSession,
+          } as unknown as ClientSideConnection,
+          initialize: { agentCapabilities: {} },
+        } as SpawnedACPProcess;
+      }
+    }
+    const session = new NonResumableSession(
+      { provider: "prime-agent", cwd: "/tmp/paseo-acp-test" },
+      {
+        provider: "prime-agent",
+        logger: createTestLogger(),
+        defaultCommand: ["prime-agent"],
+        defaultModes: [],
+        capabilities: {
+          supportsStreaming: true,
+          supportsSessionPersistence: true,
+        },
+        handle: { sessionId: "stale-session", provider: "prime-agent" },
+      },
+    );
+
+    await session.initializeResumedSession();
+
+    expect(newSession).toHaveBeenCalledWith({
+      cwd: "/tmp/paseo-acp-test",
+      mcpServers: [],
+    });
+    expect(session.id).toBe("fresh-session");
+    expect(loadSession).not.toHaveBeenCalled();
+    expect(unstableResumeSession).not.toHaveBeenCalled();
+    expect(session.describePersistence()).toMatchObject({
+      provider: "prime-agent",
+      sessionId: "fresh-session",
+    });
+  });
+
   test("unstable_resumeSession is always called with sessionId, cwd, and mcpServers", async () => {
     const { session, unstableResumeSession } = makeTestSession({
       capabilities: { sessionCapabilities: { resume: {} } },

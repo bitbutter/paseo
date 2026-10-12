@@ -1438,9 +1438,18 @@ export class AgentManager {
       currentResumeOptions,
     );
     await this.requireExternalMcpSupport(session, storedConfig);
+    const replacementPersistence = session.describePersistence();
+    const persistence =
+      replacementPersistence && replacementPersistence.sessionId !== handle.sessionId
+        ? {
+            ...handle,
+            ...replacementPersistence,
+            metadata: { ...handle.metadata, ...replacementPersistence.metadata },
+          }
+        : handle;
     return this.registerSession(session, storedConfig, resolvedAgentId, {
       ...options,
-      persistence: handle,
+      persistence,
       restoring: true,
     });
   }
